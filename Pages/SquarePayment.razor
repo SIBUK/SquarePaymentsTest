@@ -1,0 +1,135 @@
+﻿@page "/"
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Index</PageTitle>
+
+<h1>Square Payments Test App</h1>
+<h6>Mode: <b>@mode</b></h6>
+<h6>First Name: @address.FirstName</h6>
+<h6>Last Name: @address.LastName</h6>
+<h6>Address Line 1: @address.AddressLine1</h6>
+<h6>City: @address.City</h6>
+<h6>Square Country Code: @address.SquareCountryCode</h6>
+<h6>Currency: @currency</h6>
+<div id="card-container"></div>
+<button @onclick="@Submit">Submit</button>
+<h5>@message</h5>
+<h6>Card Nonce: @cardNonce</h6>
+<h6>SCA Token: @SCATokenFromVerifyBuyer</h6>
+<h6>Was User Challenged?: @wasChallenged</h6>
+
+@code 
+{
+    private DotNetObjectReference<SquarePayment>? objRef;
+    private Lazy<IJSObjectReference> jsSquare = new();
+    private Lazy<IJSObjectReference> jsProgram = new();
+    private string mode = string.Empty;
+    public Address address = new();
+    public string currency = string.Empty;
+    public string amount = string.Empty;
+    public string cardNonce = string.Empty;
+    public string SCATokenFromVerifyBuyer = string.Empty;
+    public bool wasChallenged = false;
+    public string message = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Add basic required address details
+        address.FirstName = "Frank";
+        address.LastName = "Jones";
+        address.AddressLine1 = "123 Fake Street";
+        address.City = "London";
+        address.SquareCountryCode = "GB";
+        // Dont set the postcode here. It is taken from the Square card input
+        //address.PostalCode = Dont set here
+
+        currency = "GBP";
+        amount = ""; // We are storing the card, so the amount is not used
+
+
+        string webPaymentsSdkUrl = string.Empty;
+        string applicationId = string.Empty;
+        var environment = "production";
+        var locationId = "L9H7V0BG5HGA6";
+
+        if (environment == "production")
+        {
+            webPaymentsSdkUrl = "https://web.squarecdn.com/v1/square.js";
+            applicationId = "sq0idp-XhWODK44Q5-P0dU44Z5zwg";
+            mode = "production";
+        }
+        else
+        {
+            webPaymentsSdkUrl = "https://sandbox.web.squarecdn.com/v1/square.js";
+            applicationId = "sandbox-sq0idb-ofEdK3X3-3ecsNtncMpapw";
+            mode = "sandbox";
+        }
+
+        objRef = DotNetObjectReference.Create(this);
+
+        // Load the Square Payments JS file
+        jsSquare = new(await JSRuntime.InvokeAsync<IJSObjectReference>("import", webPaymentsSdkUrl));
+
+        // Load our own 'SquarePayment.razor.js' file
+        jsProgram = new(await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./Pages/SquarePayment.razor.js"));
+
+        // Call the InitSquare function within SquarePayment.razor.js
+        await jsProgram.Value.InvokeVoidAsync("InitSquare", objRef, applicationId, locationId);
+    }
+
+    private async Task Submit()
+    {
+        cardNonce = "";
+        SCATokenFromVerifyBuyer = "";
+        wasChallenged = false;
+        message = "";
+        StateHasChanged();
+
+        await jsProgram.Value.InvokeVoidAsync("SubmitClicked", address, amount, currency, false);
+    }
+
+    [JSInvokable]
+    public async void MakePayment(string nonce, string SCAToken, bool userWasChallenged, bool charge)
+    {
+        cardNonce = nonce;
+        SCATokenFromVerifyBuyer = SCAToken;
+        wasChallenged = userWasChallenged;
+
+        StateHasChanged();
+    }
+
+
+    [JSInvokable]
+    public void SetPostCode(string postCode)
+    {
+        address.PostalCode = postCode;
+    }
+
+
+    [JSInvokable]
+    public void PaymentErrorMessage(string title, string message, string stack, bool isInfo = false)
+    {
+        message = message;
+        StateHasChanged();
+    }
+
+
+    [JSInvokable]
+    public void ShowPleaseWait()
+    {
+        // function needs to be present, but is not used for this demo
+    }
+
+    [JSInvokable]
+    public void EnableButtons()
+    {
+        // function needs to be present, but is not used for this demo
+    }
+
+
+    [JSInvokable]
+    public void FinishedLoading()
+    {
+        // function needs to be present, but is not used for this demo
+    }
+}
